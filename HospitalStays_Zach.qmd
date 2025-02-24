@@ -1,7 +1,7 @@
 ---
 title: Hospital Stay Models
 author: 
-  - name: Adam Gilbert
+  - name: Zach Vandecar
     email: a.gilbert1@snhu.edu
     affiliations: 
       - name: Southern New Hampshire University
