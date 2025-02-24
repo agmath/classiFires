@@ -2,7 +2,7 @@
 title: Hospital Stay Models
 author: 
   - name: Zach Vandecar
-    email: a.gilbert1@snhu.edu
+    email: zachary.vandecar@snhu.edu
     affiliations: 
       - name: Southern New Hampshire University
 format: html
@@ -14,7 +14,7 @@ toc: true
 code-fold: true
 ---
 
-```{r}
+```{r read and split data}
 #| label: setup
 #| message: false
 #| warning: false
@@ -22,19 +22,135 @@ code-fold: true
 library(tidyverse)
 library(tidymodels)
 
+
+#un-register cores after using parallel processing
 unregister <- function() {
   env <- foreach:::.foreachGlobals
   rm(list=ls(name=env), pos=env)
 }
 
-data <- read_csv("https://raw.githubusercontent.com/agmath/agmath.github.io/master/data/classification/hospital_stays.csv")
+#this data has 250k observations...not good for KNN
+#data <- read_csv("https://raw.githubusercontent.com/agmath/agmath.github.io/master/data/classification/hospital_stays.csv")
 
-names(data) <- janitor::make_clean_names(names(data))
+#has only 50k observations
+raw_data <- read_csv("https://raw.githubusercontent.com/agmath/agmath.github.io/master/data/classification/hospital_stays_small.csv")
+
+
+names(raw_data) <- janitor::make_clean_names(names(raw_data))
+
+
+set.seed(22)
+data_splits <- initial_split(raw_data, prop = 0.8, strata = stay)
+
+train <- training(data_splits)
+test <- testing(data_splits)
+
+
+train_folds <- vfold_cv(train, v = 10, strata = stay)
+
+
 ```
 
+artificially long dimensions push data far apart - many possible solutions - not good
+artificially short dimensions push data together - hard to draw line between them - not good
+
+So normalize data
+
+With lots of small data, maybe principal component analysis
+can tune with PCA to see whether it is worth it
 
 
 
 
 
+
+## K Closest Neighbors
+
+
+'k' is the number of voting neighbors
+
+they can each have an equal vote, or they can have weighted votes (based on distance)
+distance can be measured in different ways 
+
+we can tune 'k' and whether we use weighted votes (and how, if so)
+
+
+```{r knn specification, recipe and workflow}
+
+
+
+knn_spec <- nearest_neighbor() %>% 
+  set_engine("kknn") %>% 
+  set_mode("classification")
+
+
+knn_rec <- recipe(stay ~ ., data = train) %>% 
+  step_normalize(all_numeric_predictors()) %>% 
+  step_rm(all_nominal_predictors()) %>% 
+  step_rm(case_id) %>% 
+  step_rm(patientid) %>% 
+  step_impute_median(all_numeric_predictors()) #if this is before normalize, then the imputations (made up data) would impact normalize
+
+
+knn_wf <- workflow() %>% 
+  add_model(knn_spec) %>% 
+  add_recipe(knn_rec)
+
+
+
+```
+
+#initial cross validation (no tuning)
+
+when you tune, the cross validation is embedded
+
+```{single core knn (a cruel trap) r}
+tictoc::tic() #start timer
+
+
+knn_cv_results <- knn_wf %>% 
+  fit_resamples(
+    resamples = train_folds,
+    metrics = metric_set(accuracy, mn_log_loss) #multi-nomial log loss.....recall and the other one dont make sense with more than 2 outcome categories
+  )
+
+
+
+
+tictoc::toc()
+
+```
+
+you'll notice that this sucks and takes forever. thats cuz knn scales bad. calculating distance between 'k' points for each predictor for each row.
+
+
+so wel use parallel processing instead. 
+
+```{r}
+
+#parallel precessing begin
+n_cores <- parallel::detectCores()
+cl <- parallel::makeCluster(n_cores - 1, type = "PSOCK")
+doParallel::registerDoParallel(cl)
+
+
+tictoc::tic() #start timer
+
+
+knn_cv_results <- knn_wf %>% 
+  fit_resamples(
+    resamples = train_folds,
+    metrics = metric_set(accuracy, mn_log_loss) #multi-nomial log loss.....recall and the other one dont make sense with more than 2 outcome categories
+  )
+
+
+
+
+tictoc::toc()
+
+
+doParallel::stopImplicitCluster()
+unregister()
+
+```
 
