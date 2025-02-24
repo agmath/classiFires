@@ -1,0 +1,40 @@
+---
+title: Hospital Stay Models
+author: 
+  - name: Adam Gilbert
+    email: a.gilbert1@snhu.edu
+    affiliations: 
+      - name: Southern New Hampshire University
+format: html
+date: 2/24/2025
+date-modified: today
+date-format: long
+theme: flatly
+toc: true
+code-fold: true
+---
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(tidymodels)
+
+unregister <- function() {
+  env <- foreach:::.foreachGlobals
+  rm(list=ls(name=env), pos=env)
+}
+
+data <- read_csv("https://raw.githubusercontent.com/agmath/agmath.github.io/master/data/classification/hospital_stays.csv")
+
+names(data) <- janitor::make_clean_names(names(data))
+```
+
+
+
+
+
+
+
