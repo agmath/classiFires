@@ -81,6 +81,82 @@ knn_cv_results |>
 
 ```
 
+</br>
+
+### Hyperparameter Tuning with Parallel Processing
+
+```{r}
+#| label: about-7-min
+
+n_cores <- parallel::detectCores()
+cl <- parallel::makeCluster(n_cores - 1, type = "PSOCK")
+doParallel::registerDoParallel(cl)
+
+tictoc::tic()
+
+knn_tune_results <- knn_tune_wf %>%
+  tune_bayes(
+    resamples = train_folds,
+    metrics = metric_set(mn_log_loss),
+    control = control_bayes(parallel_over = "everything")
+  )
+
+tictoc::toc()
+
+doParallel::stopImplicitCluster()
+unregister()
+
+knn_cv_results %>%
+  collect_metrics()
+```
+
+## Fit KNN with Optimal Neighbors (Best Hyperparameters)
+
+```{r}
+knn_best_params <- knn_tune_results %>%
+  select_best(metric = "mn_log_loss")
+
+knn_best_wf <- knn_tune_wf %>%
+  finalize_workflow(knn_best_params)
+
+knn_best_fit <- knn_best_wf %>%
+  fit(train)
+```
+
+## Plotting Decision Boundary
+
+```{r}
+new_data <- crossing(
+  case_id = NA,
+  hospital_code = median(train$hospital_code, na.rm = TRUE),
+  hospital_type_code = mode(train$hospital_type_code),
+  city_code_hospital = median(train$city_code_hospital),
+  hospital_region_code = mode(train$hospital_code),
+  available_extra_rooms_in_hospital = seq(min(train$available_extra_rooms_in_hospital, na.rm = TRUE),
+            max(train$available_extra_rooms_in_hospital, na.rm = TRUE), 
+            length.out = 100),
+  department = mode(train$department),
+  ward_type = mode(train$ward_type),
+  ward_facility_code = mode(train$ward_facility_code),
+  bed_grade = median(train$bed_grade, na.rm = TRUE),
+  patientid = median(train$patientid, na.rm = TRUE),
+  city_code_patient = median(train$city_code_patient, na.rm = TRUE),
+  type_of_admission = mode(train$type_of_admission),
+  severity_of_illness = mode(train$severity_of_illness),
+  visitors_with_patient = median(train$visitors_with_patient, na.rm = TRUE),
+  age = mode(train$age),
+  admission_deposit = seq(min(train$admission_deposit, na.rm = TRUE),
+            max(train$admission_deposit, na.rm = TRUE), 
+            length.out = 100),
+)
+
+knn_best_fit %>%
+  augment(new_data) %>%
+  ggplot() + 
+  geom_point(aes(x = admission_deposit, y = available_extra_rooms_in_hospital, color = .pred_class), alpha = 0.2) + 
+  guides(color = guide_legend(override.aes = list(alpha = 1)))
+```
+
 
 
 
