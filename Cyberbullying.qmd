@@ -62,6 +62,12 @@ train %>%
 
 ```
 
+```{r}
+train %>%
+  head()
+```
+
+
 ## Data Viz
 
 ```{r}
@@ -77,10 +83,93 @@ train %>%
   top_n(15, n) %>%
   ungroup() %>%
   ggplot() + 
-  geom_bar(aes(x = word, y = n, fill = cyberbullying_type),
+  geom_bar(aes(x = reorder_within(word, n, cyberbullying_type), y = n, fill = cyberbullying_type),
            stat = "identity", color = "black",
            show.legend = FALSE) + 
+  scale_x_reordered() +
   facet_wrap(~cyberbullying_type, scales = "free") + 
   coord_flip()
 ```
+
+Compare gender and ethnicity words
+
+```{r}
+p <- train %>%
+  #filter(str_detect(cyberbullying_type, "gender") | str_detect(cyberbullying_type, "ethnicity"))
+  filter((cyberbullying_type == "gender") | (cyberbullying_type == "ethnicity")) %>%
+  unnest_tokens(word, tweet_text) %>%
+  anti_join(stop_words) %>%
+  filter(!(word %in% c("http", "https", "t.co", "bully",
+                       "bullies", "bullied"))) %>%
+  filter(!str_starts(word, "\\d+")) %>%
+  group_by(cyberbullying_type) %>%
+  count(word) %>%
+  filter(n > 25) %>%
+  pivot_wider(names_from = cyberbullying_type, values_from = n) %>% 
+  mutate(
+    ethnicity = ifelse(is.na(ethnicity), 0, ethnicity),
+    gender = ifelse(is.na(gender), 0, gender),
+  ) %>%
+  ggplot() + 
+  geom_text(aes(x = ethnicity, y = gender, label = word)) + 
+  geom_abline(linetype = "dashed")
+
+plotly::ggplotly(p)  
+```
+
+## Regular Expressions
+
+Extracting Hashtags and Mentions...
+
+```{r}
+train %>%
+  mutate(
+    hashtags = str_extract(tweet_text, "#([A-z]|\\d|-)+"),
+    mentions = str_extract(tweet_text, "@([A-z]|\\d|-)+")
+  ) %>%
+  filter(!is.na(hashtags) | !is.na(mentions))
+```
+
+The code above will only extract the first hashtag and first mention for each tweet. We can extract all the hashtags and all the mentions though if we'd like.
+
+```{r}
+train %>%
+  mutate(
+    hashtags = str_extract_all(tweet_text, "#([A-z]|\\d|-)+"),
+    mentions = str_extract_all(tweet_text, "@([A-z]|\\d|-)+")
+  ) %>%
+  filter((lengths(hashtags) > 0) | (lengths(mentions) > 0)) %>%
+  unnest(mentions) %>%
+  unnest(hashtags)
+```
+
+Notice that every tweet now is repeated once for every combination of hashtag and mention. For example, the tweet `\@TheDemocrats and the "I don't care" \@gop Against our better judgement...` appears six times in the data frame above. This is because there were two hashtags and three mentions in the tweet ($2\times 3 = 6$). This format might be okay, but we could obtain different formats if we like -- for example, one row per tweet.
+
+```{r}
+train %>%
+  mutate(
+    hashtags = map_chr(str_extract_all(tweet_text, "#([A-z]|\\d|-)+"), ~ paste(.x, collapse = ", ")),
+    mentions = map_chr(str_extract_all(tweet_text, "@([A-z]|\\d|-)+"), ~ paste(.x, collapse = ", "))
+  ) %>%
+  filter((hashtags != "") | (mentions != ""))
+```
+
+In the interest of full transparency, I wasn't going to approach constructing this particular data frame in this way. My code was going to be much lengthier and messier. ChatGPT was quite helpful in simplifying the code.
+
+We could now do things like count the number of hashtags and the number of mentions.
+
+```{r}
+train %>%
+  mutate(
+    hashtags = map_chr(str_extract_all(tweet_text, "#([A-z]|\\d|-)+"), ~ paste(.x, collapse = ", ")),
+    mentions = map_chr(str_extract_all(tweet_text, "@([A-z]|\\d|-)+"), ~ paste(.x, collapse = ", "))
+  ) %>%
+  filter((hashtags != "") | (mentions != "")) %>%
+  mutate(
+    hashtag_count = str_count(hashtags, ",") + 1,
+    mention_count = str_count(mentions, ",") + 1,
+  )
+```
+
+
 
